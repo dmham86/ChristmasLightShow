@@ -13,7 +13,10 @@
 #include <WaveHC.h>
 #include "types.h"
 
-#define NUM_BANDS 3
+#define NUM_CHANNELS 2 // Typically 2 - Left and Right
+#define NUM_BANDS 7 // MSGEQ7 Splits into 7
+#define NUM_LEVELS 3 // Number of levels you want to split into. I started with 3 - bass, mid, and treble
+#define MAX_SEGMENTS 5 // Maximum number of light segments per level (i.e. I had 5 bushes for the bass)
 
 //************************* Global Variables ****************************//
 //Pin connected to ST_CP of 74HC595
@@ -36,23 +39,34 @@ int spectrumStrobe=4;
 int spectrumAnalog0=0;  //0 for left channel, 1 for right.
 int spectrumAnalog1=1;
 
-int myDisplay[NUM_BANDS][5]; // myDisplay[left,right][bass,mid,treble][light string]
+// Make this false to avoid printing everything to Serial and run faster
+boolean debug = true;
 
+int myDisplay[NUM_LEVELS][MAX_SEGMENTS]; // myDisplay[left,right][bass,mid,treble][light string]
+int numSegments[NUM_LEVELS];
 // Spectrum analyzer read values will be kept here.
-int spectrum[2][7];
-int levels[2][NUM_BANDS];
+int spectrum[NUM_CHANNELS][NUM_BANDS];
+int levels[NUM_CHANNELS][NUM_LEVELS];
+
+// Lots of global variables - Yes, I'm a terrible person
+unsigned int MaxValue[NUM_LEVELS], Divisor[NUM_LEVELS], ChangeTimer[NUM_LEVELS]; 
 
 // make names for each segment
-int R1  = myDisplay[2][0] = 1;     // Roof 1 (Left)
-int R2  = myDisplay[2][1] = 1<<3;
+// the names are an artifact of last year's display where I
+// coded individual songs. They probably won't be necessary anymore
+/************* Matching Lights to Array *************/
+// This is where you would put your own code to match output ports to
+// the bit string where a 1 indicates on and 0 indicates off
+int R1  = myDisplay[2][0] = 1<<0;     // Roof 1 (Left)
+int R2  = myDisplay[2][1] = 1<<1;
 int R3  = myDisplay[2][2] = 1<<2;
 int R4  = myDisplay[2][3] = 1<<10;
 int R5  = myDisplay[2][4] = 1<<11;  // Roof 5 (Bottom, right)
-int FD  = myDisplay[1][1] = 1<<7;  // Front Door
+int FD  = myDisplay[1][1] = 1<<3;  // Front Door
 int G1  = myDisplay[1][3] = 1<<8;  // Left Garage
 int G2  = myDisplay[1][4] = 1<<9;  // Right Garage
 int Bu1 = myDisplay[0][0] = 1<<14;  // Bush 1 (Left)
-int Bu2 = myDisplay[0][1] = 1<<1; 
+int Bu2 = myDisplay[0][1] = 1<<7; 
 int Bu3 = myDisplay[0][3] = 1<<12;
 int Bu4 = myDisplay[0][4] = 1<<13; // Bush 4 (Right)
 int LP  = myDisplay[0][2] = 1<<15; // Lamp Post
@@ -156,9 +170,20 @@ void setup() {
     delay(5);
   // Reading the analyzer now will read the lowest frequency.
   
+  // Set defaults for setting divisors for each level
+  for (int i = 0; i < NUM_LEVELS; i++){
+    MaxValue[i] = 0;
+    Divisor[i] = 80;
+    ChangeTimer[i] = 0;
+  }
+  // 3 levels of 5 segments
+  numSegments[0] = 5;
+  numSegments[1] = 5;
+  numSegments[2] = 5;
+  
   // Turn all LEDs off.
   shiftOut16(allOff, 1000);
-  randomSeed(analogRead(0));
+  //randomSeed(analogRead(0));
 }
 
 void loop() {
@@ -173,123 +198,126 @@ void loop() {
 // Read 7 band equalizer.
 void readSpectrum()
 {
-  // Band 0 = Lowest Frequencies.
-  byte Band;
-  for(Band=0;Band <7; Band++)
+  // band 0 = Lowest Frequencies.
+  byte band, level;
+  for(band=0;band <NUM_BANDS; band++)
   {
-    spectrum[0][Band] = (analogRead(spectrumAnalog0) + analogRead(spectrumAnalog0) ) >>1; //Read twice and take the average by dividing by 2
-    spectrum[1][Band] = (analogRead(spectrumAnalog1) + analogRead(spectrumAnalog1) ) >>1; //Read twice and take the average by dividing by 2
-  
+    // I decided to merge the left and right chennels as I only had 16 
+    // total output segments 
+    spectrum[0][band] = (analogRead(spectrumAnalog0) + analogRead(spectrumAnalog0) ) >>1; //Read twice and take the average by dividing by 2
+    spectrum[1][band] = (analogRead(spectrumAnalog1) + analogRead(spectrumAnalog1) ) >>1; //Read twice and take the average by dividing by 2
+
     digitalWrite(spectrumStrobe,HIGH);
     digitalWrite(spectrumStrobe,LOW);     
   }
+  
+  // This is where you split the 7 bands into your different levels
+  // You can do this however you'd like
+  
+  /* Save this for later - for now test with old values to make sure it looks the same
+  for( band = 0, level = 0; band < NUM_BANDS-1; band++, level++ ) {
+    levels[0][level] = spectrum[0][band];
+    // Average the two neighbor frequencies
+    levels[0][++level] = (spectrum[0][band] + spectrum[0][band+1]) >> 1;
+  }
+  levels[0][NUM_BANDS*2-1] = spectrum[0][band];
+  */
   levels[0][0] = (spectrum[0][0] + spectrum[0][1] ) >>1;
   levels[0][1] = (spectrum[0][2] + spectrum[0][3]) >>1;
   levels[0][2] = (spectrum[0][4] + spectrum[0][5] + spectrum[0][6] ) / 3;
   levels[1][0] = (spectrum[1][0] + spectrum[1][1] ) >>1;
   levels[1][1] = (spectrum[1][2] + spectrum[1][3]) >>1;
   levels[1][2] = (spectrum[1][4] + spectrum[1][5] + spectrum[1][6] ) / 3;
+
+  // Debug output
+  if(debug) {
+    for(int channel = 0; channel < NUM_CHANNELS; channel++) {
+      for(int level = 0; level < NUM_LEVELS; level++) {
+        Serial.print("Channel: ");
+        Serial.print(channel);
+        Serial.print("\tLevel: ");
+        Serial.print(level);
+        Serial.print("\tValue: ");
+        Serial.print(levels[channel][level]);
+        Serial.println();
+      }
+    }
+  }
 }
 
 
 void showSpectrum()
 {
-  //Not I don;t use any floating point numbers - all integers to keep it zippy. 
+  //Ben Moyes - Note I don't use any floating point numbers - all integers to keep it zippy. 
    readSpectrum();
-   byte band, barSize, barNum;
-   static unsigned int MaxLevel[NUM_BANDS] = {0,0,0}, Divisor[NUM_BANDS] = {80,80,80}, ChangeTimer[NUM_BANDS]={0,0,0}; 
-   int works[2], remainder;
-   int randy[NUM_BANDS] = {random(5),random(5),random(5)};
-   int prevLevels[2][NUM_BANDS], prevRandy[NUM_BANDS];
-   
+   byte level, barSize, barNum, channel;
+   int works, remainder;
    unsigned int myDataOut = allOff; // all off
-  
-    //Serial.print(levels[0][0]);
-  //Serial.print("\n");
-        
+         
   // 0 = left, 1 = right
-  for(band=0;band<NUM_BANDS;band++)
-  {
-  //If value is 0, we don;t show anything on graph
-     works[0] = levels[0][band]/Divisor[band] -1;	//Bands are read in as 10 bit values. Scale them down to be 0 - 3
-     works[1] = levels[1][band]/Divisor[band] -1;	//Bands are read in as 10 bit values. Scale them down to be 0 - 3
-     //remainder = levels[i][band]%Divisor[band];
-     
-     if(works[0] > MaxLevel[band])  //Check if this value is the largest so far.
-       MaxLevel[band] = works[0];  
-     if(works[1] > MaxLevel[band])  //Check if this value is the largest so far.
-       MaxLevel[band] = works[1];      
-       
-     if( levels[0][band] < (prevLevels[0][band]-10)
-         || levels[0][band] > (prevLevels[0][band]+10)
-         || levels[1][band] < (prevLevels[1][band]-10)
-         || levels[1][band] > (prevLevels[1][band]+10) ) 
-     {
-       randy[band] = prevRandy[band];
-     }
-     //Serial.print(works);
-     //Serial.print("  ");
-     //barSize = floor((float)works/MaxLevel*3.0); 
-     prevRandy[band]=randy[band];
-     prevLevels[0][band]=levels[0][band];
-     prevLevels[1][band]=levels[1][band];
-     
-     for(barNum=0; (barNum < NUM_BANDS) && (works[0] > barNum); barNum++)  
-     {
-       // To turn on a segment, or with myDataOut
-       myDataOut = myDataOut | myDisplay[band][(randy[band]+barNum)%5]; 
-     }
-     for(barNum=0; (barNum < NUM_BANDS) && (works[1] > barNum); barNum++)  
-     {
-       // To turn on a segment, or with myDataOut
-       myDataOut = myDataOut | myDisplay[band][(randy[band]-barNum)%5]; 
-     }
-     
-    // Adjust the Divisor if levels are too high/low.
-    // If average of right and left channel below 2 happens 20 times, then very slowly turn up.
-    int avgWorks = (works[0]+works[1])>>1;
-    if (avgWorks >= 3)
-    {
-      Divisor[band]=Divisor[band]+1;
-      /*
-      Serial.print(Divisor[band]);
-      Serial.print(" ");
-      Serial.print(levels[i][band]);
+  for(channel = 0; channel < NUM_CHANNELS; channel++) {
+    if(debug) {
+      Serial.print("Channel: ");
+      Serial.print(channel);
       Serial.println();
-      */
-      ChangeTimer[band]=0;
     }
-    else if(avgWorks < 2)
+    for(level=0;level<NUM_LEVELS;level++)
     {
-      if(Divisor[band] > 50) {
-        if(ChangeTimer[band]++ > 20)
-        {
-          Divisor[band]--;
-          ChangeTimer[band]=0;
+    //If value is 0, we don;t show anything on graph
+       works = levels[0][level]/Divisor[level] -1;	//Bands are read in as 10 bit values. Scale them down to be 0 - 3
+       //remainder = levels[i][band]%Divisor[band];
+       
+       if(works > MaxValue[level])  //Check if this value is the largest so far.
+         MaxValue[level] = works;      
+         
+       if(debug) {
+         Serial.print(" Level: ");Serial.print(level);
+         Serial.print(" Segments: ");Serial.print(works);
+         Serial.println();
+       }
+       
+       for(barNum=0; (barNum < numSegments[level]) && (works > barNum); barNum++)  
+       {
+         // To turn on a segment, or with myDataOut
+         myDataOut = myDataOut | myDisplay[level][barNum]; 
+       }
+       
+      // Adjust the Divisor if levels are too high/low.
+      // If below .5*number-of-segments happens 20 times, then very slowly turn up.
+      int avgWorks = works;
+      if (avgWorks >= numSegments[level])
+      {
+        Divisor[level]=Divisor[level]+1;
+        /*
+        Serial.print(Divisor[level]);
+        Serial.print(" ");
+        Serial.print(levels[i][level]);
+        Serial.println();
+        */
+        ChangeTimer[level]=0;
+      }
+      else if( works < (numSegments[level]<<1) ) 
+      {
+        if(Divisor[level] > 50) {
+          if(ChangeTimer[level]++ > 20)
+          {
+            Divisor[level]--;
+            ChangeTimer[level]=0;
+          }
         }
       }
-    }
-    else
-    {
-        ChangeTimer[band]=0; 
-    }      
-  }
-  serialOutSpectrum(myDataOut);
-  shiftOut16(myDataOut,40);
-
-}
-
-void serialOutSpectrum(int spectrum){
-  for(int i = NUM_BANDS-1; i >= 0; i--) {
-    for(int j = 0; j < 5; j++) {
-      if(myDisplay[i][j] & spectrum)
-        Serial.print("1");
       else
-        Serial.print("0");
+      {
+          ChangeTimer[level]=0; 
+      }      
     }
+  }
+  if(debug) {
+    Serial.print(myDataOut, BIN);
     Serial.println();
   }
-  Serial.println();
+  shiftOut16(myDataOut,40);
+
 }
 
 //********************* Shift Register Helpers ********************//
