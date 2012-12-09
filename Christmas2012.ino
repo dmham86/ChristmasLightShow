@@ -13,11 +13,11 @@
 #include <WaveHC.h>
 #include "types.h"
 
-#define NUM_CHANNELS 2 // Typically 2 - Left and Right
+#define NUM_CHANNELS 1 // Typically 2 - Left and Right
 #define NUM_BANDS 7 // MSGEQ7 Splits into 7
-#define NUM_LEVELS 3 // Number of levels you want to split into. I started with 3 - bass, mid, and treble
+#define NUM_LEVELS 4 // Number of levels you want to split into. I started with 3 - bass, mid, and treble
 #define MAX_SEGMENTS 5 // Maximum number of light segments per level (i.e. I had 5 bushes for the bass)
-
+#define WAIT_TIME 40 // Number of microseconds between checking sound
 //************************* Global Variables ****************************//
 //Pin connected to ST_CP of 74HC595
 int latchPin = 7;
@@ -40,7 +40,7 @@ int spectrumAnalog0=0;  //0 for left channel, 1 for right.
 int spectrumAnalog1=1;
 
 // Make this false to avoid printing everything to Serial and run faster
-boolean debug = true;
+boolean debug = true; // This will make it VERY slow
 
 int myDisplay[NUM_LEVELS][MAX_SEGMENTS]; // myDisplay[left,right][bass,mid,treble][light string]
 int numSegments[NUM_LEVELS];
@@ -57,21 +57,21 @@ unsigned int MaxValue[NUM_LEVELS], Divisor[NUM_LEVELS], ChangeTimer[NUM_LEVELS];
 /************* Matching Lights to Array *************/
 // This is where you would put your own code to match output ports to
 // the bit string where a 1 indicates on and 0 indicates off
-int R1  = myDisplay[2][0] = 1<<0;     // Roof 1 (Left)
-int R2  = myDisplay[2][1] = 1<<1;
-int R3  = myDisplay[2][2] = 1<<2;
-int R4  = myDisplay[2][3] = 1<<10;
-int R5  = myDisplay[2][4] = 1<<11;  // Roof 5 (Bottom, right)
-int FD  = myDisplay[1][1] = 1<<3;  // Front Door
-int G1  = myDisplay[1][3] = 1<<8;  // Left Garage
-int G2  = myDisplay[1][4] = 1<<9;  // Right Garage
+int R1  = myDisplay[3][0] = 1<<0;     // Roof 1 (Left)
+int R2  = myDisplay[3][1] = 1<<1;
+int R3  = myDisplay[3][2] = 1<<2;
+int R4  = myDisplay[3][3] = 1<<10;
+int R5  = myDisplay[3][4] = 1<<11;  // Roof 5 (Bottom, right)
+int FD  = myDisplay[2][0] = 1<<3;  // Front Door
+int G1  = myDisplay[2][1] = 1<<8;  // Left Garage
+int G2  = myDisplay[2][2] = 1<<9;  // Right Garage
 int Bu1 = myDisplay[0][0] = 1<<14;  // Bush 1 (Left)
 int Bu2 = myDisplay[0][1] = 1<<7; 
-int Bu3 = myDisplay[0][3] = 1<<12;
-int Bu4 = myDisplay[0][4] = 1<<13; // Bush 4 (Right)
-int LP  = myDisplay[0][2] = 1<<15; // Lamp Post
-int RR  = myDisplay[1][2] = 1<<4; // Right Railing
-int LR  = myDisplay[1][0] = 1<<5; // Left Railing
+int Bu3 = myDisplay[0][2] = 1<<12;
+int Bu4 = myDisplay[0][3] = 1<<13; // Bush 4 (Right)
+int LP  = myDisplay[1][2] = 1<<15; // Lamp Post
+int RR  = myDisplay[1][1] = 1<<5; // Right Railing
+int LR  = myDisplay[1][0] = 1<<4; // Left Railing
 int allOff = 0;
 int allOn = ~0;
 
@@ -171,18 +171,31 @@ void setup() {
   // Reading the analyzer now will read the lowest frequency.
   
   // Set defaults for setting divisors for each level
-  for (int i = 0; i < NUM_LEVELS; i++){
-    MaxValue[i] = 0;
-    Divisor[i] = 80;
-    ChangeTimer[i] = 0;
+  for (int level = 0; level < NUM_LEVELS; level++){
+    MaxValue[level] = 0;
+    Divisor[level] = 120;
+    ChangeTimer[level] = 0;
   }
   // 3 levels of 5 segments
-  numSegments[0] = 5;
-  numSegments[1] = 5;
-  numSegments[2] = 5;
+  numSegments[0] = 4;
+  numSegments[1] = 3;
+  numSegments[2] = 3;
+  numSegments[3] = 5;
+  /*numSegments[4] = 2;
+  numSegments[5] = 2;
+  numSegments[6] = 3;
+  numSegments[7] = 1;
+  numSegments[8] = 1;
+  numSegments[9] = 1;
+  numSegments[10] = 1;
+  numSegments[11] = 1;
+  numSegments[12] = 1;*/
   
   // Turn all LEDs off.
   shiftOut16(allOff, 1000);
+  /*for(int i = 0; i < 16; i++){
+    shiftOut16(1<<i, 3000);
+  }*/
   //randomSeed(analogRead(0));
 }
 
@@ -204,8 +217,8 @@ void readSpectrum()
   {
     // I decided to merge the left and right chennels as I only had 16 
     // total output segments 
-    spectrum[0][band] = (analogRead(spectrumAnalog0) + analogRead(spectrumAnalog0) ) >>1; //Read twice and take the average by dividing by 2
-    spectrum[1][band] = (analogRead(spectrumAnalog1) + analogRead(spectrumAnalog1) ) >>1; //Read twice and take the average by dividing by 2
+    spectrum[0][band] = (analogRead(spectrumAnalog0) + analogRead(spectrumAnalog0) + (analogRead(spectrumAnalog1) + analogRead(spectrumAnalog1) )) >>2; //Read twice and take the average by dividing by 2
+    //spectrum[1][band] = (analogRead(spectrumAnalog1) + analogRead(spectrumAnalog1) ) >>1; //Read twice and take the average by dividing by 2
 
     digitalWrite(spectrumStrobe,HIGH);
     digitalWrite(spectrumStrobe,LOW);     
@@ -215,20 +228,29 @@ void readSpectrum()
   // You can do this however you'd like
   
   /* Save this for later - for now test with old values to make sure it looks the same
-  for( band = 0, level = 0; band < NUM_BANDS-1; band++, level++ ) {
+  for( band = 0, level = 0; band < NUM_BANDS; band++, level++ ) {
     levels[0][level] = spectrum[0][band];
     // Average the two neighbor frequencies
-    levels[0][++level] = (spectrum[0][band] + spectrum[0][band+1]) >> 1;
+    //levels[0][++level] = (spectrum[0][band] + spectrum[0][band+1]) >> 1;
   }
-  levels[0][NUM_BANDS*2-1] = spectrum[0][band];
-  */
+  //levels[0][NUM_BANDS*2-1] = spectrum[0][band];*/
+  levels[0][0] = (spectrum[0][0] + spectrum[0][1])>>1;
+  levels[0][1] = (spectrum[0][2] + spectrum[0][3])>>1;
+  levels[0][2] = spectrum[0][4];
+  levels[0][3] = (spectrum[0][5] + spectrum[0][6])>>1;
+  /*
   levels[0][0] = (spectrum[0][0] + spectrum[0][1] ) >>1;
   levels[0][1] = (spectrum[0][2] + spectrum[0][3]) >>1;
   levels[0][2] = (spectrum[0][4] + spectrum[0][5] + spectrum[0][6] ) / 3;
   levels[1][0] = (spectrum[1][0] + spectrum[1][1] ) >>1;
   levels[1][1] = (spectrum[1][2] + spectrum[1][3]) >>1;
   levels[1][2] = (spectrum[1][4] + spectrum[1][5] + spectrum[1][6] ) / 3;
-
+  levels[0][0] += levels[1][0];
+  levels[0][1] += levels[1][1];
+  levels[0][2] += levels[1][2];
+  levels[0][0] = levels[0][0] >> 1;
+  levels[0][1] = levels[0][1] >> 1;
+  levels[0][2] = levels[0][2] >> 1;*/
   // Debug output
   if(debug) {
     for(int channel = 0; channel < NUM_CHANNELS; channel++) {
@@ -264,28 +286,29 @@ void showSpectrum()
     for(level=0;level<NUM_LEVELS;level++)
     {
     //If value is 0, we don;t show anything on graph
-       works = levels[0][level]/Divisor[level] -1;	//Bands are read in as 10 bit values. Scale them down to be 0 - 3
-       //remainder = levels[i][band]%Divisor[band];
-       
-       if(works > MaxValue[level])  //Check if this value is the largest so far.
-         MaxValue[level] = works;      
+       works = (levels[channel][level]/Divisor[level]) -1;	//Bands are read in as 10 bit values. Scale them down to be 0 - 3
+        if(works > MaxValue[level])  //Check if this value is the largest so far.
+         MaxValue[level] = works; 
+ 
+       remainder = floor(levels[channel][level]*numSegments[level]/MaxValue[level]);   
          
        if(debug) {
          Serial.print(" Level: ");Serial.print(level);
          Serial.print(" Segments: ");Serial.print(works);
+         Serial.print(" Start: ");Serial.print(remainder);
          Serial.println();
        }
        
-       for(barNum=0; (barNum < numSegments[level]) && (works > barNum); barNum++)  
+       for(barNum=0; (barNum < numSegments[level]); barNum++)  
        {
          // To turn on a segment, or with myDataOut
-         myDataOut = myDataOut | myDisplay[level][barNum]; 
+         if(remainder == barNum)
+           myDataOut = myDataOut | myDisplay[level][barNum]; 
        }
        
       // Adjust the Divisor if levels are too high/low.
       // If below .5*number-of-segments happens 20 times, then very slowly turn up.
-      int avgWorks = works;
-      if (avgWorks >= numSegments[level])
+      if (works >= numSegments[level])
       {
         Divisor[level]=Divisor[level]+1;
         /*
@@ -296,9 +319,9 @@ void showSpectrum()
         */
         ChangeTimer[level]=0;
       }
-      else if( works < (numSegments[level]<<1) ) 
+      else if( works < 0 ) 
       {
-        if(Divisor[level] > 50) {
+        if(Divisor[level] > 70) {
           if(ChangeTimer[level]++ > 20)
           {
             Divisor[level]--;
@@ -316,7 +339,7 @@ void showSpectrum()
     Serial.print(myDataOut, BIN);
     Serial.println();
   }
-  shiftOut16(myDataOut,40);
+  shiftOut16(myDataOut,WAIT_TIME);
 
 }
 
