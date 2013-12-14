@@ -11,12 +11,27 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 
-    /**
-      * This sketch demonstrates two ways to accomplish offline (non-realtime) analysis of an audio file.<br>
-      * The first method, which uses an AudioSample, is what you see running.<br>
-      * The second method, which uses an AudioRecordingStream and is only available in Minim Beta 2.1.0 and beyond,<br>
-      * can be viewed by looking at the offlineAnalysis.pde file.
-      **/
+
+  /**
+    * Christmas Light Show
+    * David Hamilton
+    * GitHub: dmham86
+    * 
+    * This sketch pre-processes music and generates a light show
+    * for the song. Light show data is saved into a .csv file for
+    * manual editing to perfect the show.
+    *
+    * In order to run this sketch, you will need to replace your
+    * minim library with the version from here
+    * https://github.com/ddf/Minim
+    * For an explanation of the offline Analysis, see this example
+    * http://code.compartmental.net/minim/examples/FFT/offlineAnalysis/offlineAnalysis.pde
+    *
+    * Special thanks to 
+    * Damien Di Fede for his excellent work with the minim library
+    * 
+    **/
+    
     final int NUM_SEGMENTS = 16;
     final int NUM_FILTERS = 16;
 
@@ -96,7 +111,6 @@ String getRandomFileName(String path, final String extension) {
   };
   
   String[] filenames = folder.list();
-  folder.close();
   
   if(filenames == null || filenames.length == 0) {
     System.out.println("No files in path [" + path + "] with extension " + extension);
