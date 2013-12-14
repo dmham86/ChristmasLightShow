@@ -11,6 +11,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 
+import processing.serial.*;
+
 
   /**
     * Christmas Light Show
@@ -48,8 +50,11 @@ import java.util.Collections;
     BeatListener beatListener;
     PrintWriter outputFile;
     
+    Serial ardSerial;
+    
     String audioPath; 
     String fileName = "song.mp3";
+    int myDataOut = 0;
 
 
     // how many units to step per second
@@ -62,6 +67,17 @@ import java.util.Collections;
     public void setup()
     {
         size(512, 400);
+        
+        frameRate(10); // Slow it down some
+  
+        println(Serial.list());
+        if(Serial.list().length > 1) {
+          ardSerial = new Serial(this, Serial.list()[1], 9600);
+          println("Connected to Arduino");
+        }
+        else {
+          ardSerial = new Serial(this, Serial.list()[0], 9600);
+        }
 
         minim = new Minim(this);
         audioPath = dataPath("songs");
@@ -317,6 +333,7 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
         float wid = width/NUM_FILTERS;
         float beatWid = width/3;
         if(song.isPlaying()) {
+          
             if(beatListener.isKick()) { rect(0, height, beatWid, -BEAT_HEIGHT); }
             if(beatListener.isSnare()) { rect(beatWid*1, height, beatWid, -BEAT_HEIGHT); }
             if(beatListener.isHat()) { rect(beatWid*2, height, beatWid, -BEAT_HEIGHT); }
@@ -330,8 +347,14 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
         else {
           startNextSong();
         }
-
-    }
+    // Send to arduino
+    ardSerial.write(myDataOut & 255);
+    ardSerial.write( (myDataOut >> 8) & 255);
+  }
+  
+  void segmentOn(int i) {
+    myDataOut = myDataOut | 1<<i;
+  }
 
 public void stop()
 {
@@ -340,6 +363,7 @@ public void stop()
   }
   song.close();
 
+  ardSerial.stop();
   minim.stop();
 
   super.stop();
