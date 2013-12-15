@@ -13,3 +13,8 @@ Christmas 2012.ino is an old version that used only the arduino with a wave shie
 on the data, so I moved to the hybrid version. My eventual goal is to save the light shows down to a small file - each redraw can be handled by one integer as long
 you have less than 32 separate light segments. This way after processing the songs, they can be transferred to the wave shield and a serial connection will not be
 necessary.
+
+Until I get around to writing a guide, you can see the following links and tutorials.
+- http://www.arduino.cc/en/Tutorial/ShiftOut
+- http://computerchristmas.com/christmas/link-how_to/HowToId-65/LowLimit-0
+- http://www.amazon.com/SainSmart-8-CH-8-Channel-Relay-Module/dp/B0057OC5WK/ref=sr_1_2 (although if you can spend more, i would advise going for solid state relays)
