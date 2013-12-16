@@ -8,6 +8,10 @@ int clockPin = 8;
 ////Pin connected to DS of 74HC595
 int dataPin = 9;
 
+int ON = 2^8 -1;
+
+int count = 0;
+
 void setup() {
         Serial.begin(9600);     // opens serial port, sets data rate to 9600 bps
         //Serial.flush();
@@ -16,25 +20,39 @@ void setup() {
         pinMode(latchPin, OUTPUT);
         pinMode(clockPin, OUTPUT);
         pinMode(dataPin, OUTPUT);
+        
+        allOn();
 
 }
 
 void loop() {
         // send data only when you receive data:
         if (Serial.available() > 1) {
+          count = 0;
           // read the incoming byte:
           int byte1 = Serial.read();
           int byte2 = Serial.read();
 
           digitalWrite(latchPin, 0);
-          shiftOut( byte1 );
           shiftOut( byte2 );
+          shiftOut( byte1 );
           #ifdef DEBUG
             Serial.print(byte1,BIN);
             Serial.println(byte2,BIN);
           #endif
           digitalWrite(latchPin, 1);                
         }
+        else {
+          if(count == 1000) {
+            allOn();
+          }
+        }
+}
+
+void allOn() { 
+    shiftOut(0);
+    shiftOut(0);
+    digitalWrite(latchPin, 1);  
 }
 
 //********************* Shift Register Helpers ********************//

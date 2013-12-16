@@ -42,7 +42,7 @@ public class BeatListener implements AudioListener
   }
 
   private void updateBuffers() {
-      kick = constrain(beat.isKick() ? kick*3 : kick*.8f, 1, 10);
+      kick = constrain(beat.isKick() ? kick*3 : kick*.75f, 1, 10);
       snare = constrain(beat.isSnare() ? snare*3 : snare*.8f, 1, 10);
       hat = constrain(beat.isHat() ? hat*3 : hat*.8f, 1, 10);
   }

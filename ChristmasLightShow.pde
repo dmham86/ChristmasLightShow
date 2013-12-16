@@ -34,11 +34,17 @@ import processing.serial.*;
     * 
     **/
     
-    final int NUM_SEGMENTS = 16;
-    final int NUM_FILTERS = 16;
+    final int NUM_SEGMENTS = 13; // The number of light segments you are using. The maximum without modification would be 13
+                                 // Three will be added for kick, hat, and snare
+    final int NUM_FILTERS = 16; // The number of band pass filters used to analyze the signal
+                                // There will actually be four extras used to help analyze 
+    final float MIN_LEVEL = .18f; // The minimum sound level for which you want any lights to come on
+    final float FILE_TYPE = 1; // 0 = output as .csv (TRUE,FALSE,FALSE,TRUE,...) where each boolean represents a segment and each line represents a millisecond in the song
+                               // non-zero = output as .txt (int,int,int,int...) where each integer represents 2 bytes 1001000100001001 and each bit represents a segment
 
     int MELODY_HEIGHT;
     int BEAT_HEIGHT;
+    int READ_SEGMENTS;
 
 
     Minim minim;
@@ -53,7 +59,6 @@ import processing.serial.*;
     Serial ardSerial;
     
     String audioPath; 
-    String fileName = "song.mp3";
     int myDataOut = 0;
 
 
@@ -96,16 +101,37 @@ void startNextSong() {
   String songName = getRandomFileName(audioPath, ".mp3");
   if(songName == null) { return; }
   song = minim.loadFile(audioPath + "\\" + songName);
-  File f = new File(dataPath(songName+".csv"));
-  if (!f.exists()) {
-    analyzeUsingAudioRecordingStream(audioPath, songName);
+  if( FILE_TYPE == 0 ) {
+    File f = new File(dataPath(songName+".csv"));
+    if (!f.exists()) {
+      analyzeUsingAudioRecordingStream(audioPath, songName);
+    }
+    else {
+      String[] lines = loadStrings(dataPath(songName+".csv"));
+      spectra2 = new boolean[lines.length][]; 
+      READ_SEGMENTS = 1000; // Arbitrary high number, will reduce in the loop
+      for(int i = 0; i < lines.length; i++ ) {
+        String[] bools = split(lines[i],',');
+        spectra2[i] = boolean(bools);
+        READ_SEGMENTS = min(spectra2[i].length, READ_SEGMENTS);
+      }
+    }
   }
   else {
-    String[] lines = loadStrings(dataPath(songName+".csv"));
-    spectra2 = new boolean[lines.length][];  
-    for(int i = 0; i < lines.length; i++ ) {
-      String[] bools = split(lines[i],',');
-      spectra2[i] = boolean(bools);
+    File f = new File(dataPath(songName+".txt"));
+    if (!f.exists()) {
+      analyzeUsingAudioRecordingStream(audioPath, songName);
+    }
+    String[] lines = loadStrings(dataPath(songName+".txt"));
+    // First line is the number of segments written
+    READ_SEGMENTS = Integer.parseInt(lines[0]);
+    spectra2 = new boolean[lines.length-1][READ_SEGMENTS]; 
+    for(int i = 0; i < lines.length-1; i++ ) {
+      Integer input = Integer.parseInt(lines[i+1]);
+      for( int j = 0; j < READ_SEGMENTS; j++) {
+        spectra2[i][j] = (input & 1<<j) > 0;
+        System.out.println((input & 1<<j));
+      }
     }
   }
 
@@ -185,7 +211,7 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
       filePlayer.unpatch(bp);
     }
 
-        // Find the local maximums
+        // Sum each filter over a set value to reduce flicker
         println("Summing to remove flicker...");
         for(int i = 0; i < NUM_FILTERS+4; i++) {
             float runningSum = 0.0f;
@@ -199,20 +225,8 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
                 spectra[j][i] = runningSum;
             }
         }
-    // Find the local maximums
-    /*
-  println("Finding the local maximums...");
-  for(int i = 0; i < NUM_FILTERS; i++) {
-    for(int j = 0; j < totalChunks; j++) {
-        float val = spectra[j][i+2];
-        boolean set = val > spectra[j][i]  && val > spectra[j][i+1]
-                && val > spectra[j][i+3]  && val > spectra[j][i+4];
-        if(!set) {
-            spectra[j][i+2] = 0.0f;
-        }
-    }
-  }
-  */
+
+    
         spectra2 = new boolean[totalChunks][NUM_FILTERS];
         println("Normalizing the values...");
         //for(int j = 0; j < NUM_FILTERS+4; j++) {
@@ -233,10 +247,10 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
                     spectra[i][j+2] = 0.0f;
                 }
             }
-            if( max > 0.1f) {
+            if( max > MIN_LEVEL) {
                 float thresh = .7f * max;
-                if(thresh < 0.1f) {
-                    thresh = 0.1f;
+                if(thresh < MIN_LEVEL) {
+                    thresh = MIN_LEVEL;
                 }
                 for(int j = 0; j < NUM_FILTERS; j++) {
                     if(spectra[i][j+2] > thresh ) {
@@ -246,82 +260,40 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
             }
         }
 
-    /*
-            println("Normalizing the values...");
-        //for(int j = 0; j < NUM_FILTERS+4; j++) {
-        for(int i = 0; i < totalChunks; i++) {
-            float max = 0.0f;
-            for(int j = 0; j < NUM_FILTERS; j++) {
-                if(spectra[i][j+2] > max) {
-                    max = spectra[i][j+2];
-                }
-            }
-            if( max != 0.0f) {
-                for(int j = 0; j < NUM_FILTERS; j++) {
-                    spectra[i][j+2] = spectra[i][j+2] / max;
-                }
-            }
-        }
-     */
-
-
-
-
-  // Find the local maximums
-    /*
-  println("Finding the local maximums...");
-  for(int i = 0; i < NUM_FILTERS; i++) {
-    for(int j = 0; j < totalChunks; j++) {
-        float val = spectra[j][i+2];
-        boolean set = val > spectra[j][i]  && val > spectra[j][i+1]
-                && val > spectra[j][i+3]  && val > spectra[j][i+4];
-        if(!set) {
-            spectra[j][i+2] = 0.0f;
-        }
-    }
-  }       */
-
-    /*
-  // Remove flicker
-  float noiseLevel = 0.05f;
-  spectra2 = new boolean[totalChunks][NUM_FILTERS];
-  println("Removing flicker...");
-  for(int i = 0; i < NUM_FILTERS; i++) {
-    int runningTotal = 0;
-    for(int j = 0; j < 16; j++) {
-        if(spectra[j][i+2] != 0.0f){
-           runningTotal ++;
-        }
-    }
-    for(int j = 16; j < totalChunks; j++) {
-        if(spectra[j-16][i+2]!= 0.0f) {
-            runningTotal--;
-        }
-        if(runningTotal > 5) {
-            spectra2[j][i] = true;
-        }
-        if(spectra[j][i+2]!= 0.0f) {
-            runningTotal++;
-        }
-    }
-  } */
-
     // Write the boolean array to file for future
     println("Saving to file...");
+    READ_SEGMENTS = NUM_FILTERS;
     if(outputFile != null) {
       outputFile.close();
     }
-    outputFile = createWriter(dataPath(fileName+".csv"));
-    String outLine = "";
-    for(int i = 0; i < spectra2.length; i++) {
-      outLine = "";
-      for(int j = 0; j < NUM_SEGMENTS; j++) {
-        outLine += spectra2[i][j] + ",";
+    if(FILE_TYPE == 0) { // Boolean representation in csv
+      outputFile = createWriter(dataPath(fileName+".csv"));
+      String outLine = "";
+      for(int i = 0; i < spectra2.length; i++) {
+        outLine = "";
+        for(int j = 0; j < NUM_FILTERS; j++) {
+          outLine += spectra2[i][j] + ",";
+        }
+        outLine = outLine.substring(0, outLine.length()-1);
+        outputFile.println(outLine);
       }
-      outLine = outLine.substring(0, outLine.length()-1);
-      outputFile.println(outLine);
+      outputFile.close();
     }
-    outputFile.close();
+    else { // Integer representation
+      outputFile = createWriter(dataPath(fileName+".txt"));
+      outputFile.println(NUM_FILTERS);
+      int out;
+      for(int i = 0; i < spectra2.length; i++) {
+        out = 0;
+        for(int j = 0; j < NUM_FILTERS; j++) {
+          if( spectra2[i][j] ) { 
+            out = out | 1<<j; 
+          }
+        }
+        outputFile.println(out);
+      }
+      outputFile.close();
+    }
 }
 
 
@@ -329,19 +301,22 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
     {
         background(0);
         fill(255);
+        myDataOut = 0;
         float dt = 1.0f / frameRate;
-        float wid = width/NUM_FILTERS;
+        float wid = width/READ_SEGMENTS;
         float beatWid = width/3;
         if(song.isPlaying()) {
-          
-            if(beatListener.isKick()) { rect(0, height, beatWid, -BEAT_HEIGHT); }
-            if(beatListener.isSnare()) { rect(beatWid*1, height, beatWid, -BEAT_HEIGHT); }
-            if(beatListener.isHat()) { rect(beatWid*2, height, beatWid, -BEAT_HEIGHT); }
-
-            for(int i = 0; i < NUM_FILTERS; i++) {
+            if(song.mix.level() > MIN_LEVEL) {
+              if(beatListener.isKick()) { rect(0, BEAT_HEIGHT, beatWid, -BEAT_HEIGHT); segmentOn(NUM_SEGMENTS); }
+              if(beatListener.isSnare()) { rect(beatWid*1, BEAT_HEIGHT, beatWid, -BEAT_HEIGHT); segmentOn(NUM_SEGMENTS + 1);}
+              if(beatListener.isHat()) { rect(beatWid*2, BEAT_HEIGHT, beatWid, -BEAT_HEIGHT); segmentOn(NUM_SEGMENTS + 2); }
+            }
+            for(int i = 0; i < READ_SEGMENTS; i++) {
                 int pos = floor(spectra2.length*((float)song.position()/song.length()));
-                float val = (spectra2[pos][i]) ? 1 : 0;
-                rect(i*wid, MELODY_HEIGHT, wid, -val*MELODY_HEIGHT);           //(int)frameRate
+                if(spectra2[pos][i]) {
+                  segmentOn(i % NUM_SEGMENTS);
+                  rect(i*wid, height, wid, -MELODY_HEIGHT);
+                }           
             }
         }
         else {
