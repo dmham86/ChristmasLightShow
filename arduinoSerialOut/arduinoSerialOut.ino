@@ -1,5 +1,5 @@
 #define DEBUG
-
+#define DEBUG_SHIFT
 //************************* Global Variables ****************************//
 //Pin connected to ST_CP of 74HC595
 int latchPin = 7;
@@ -8,7 +8,7 @@ int clockPin = 8;
 ////Pin connected to DS of 74HC595
 int dataPin = 9;
 
-int ON = 2^8 -1;
+unsigned int ON = 255;
 
 int count = 0;
 
@@ -50,9 +50,10 @@ void loop() {
 }
 
 void allOn() { 
-    shiftOut(0);
-    shiftOut(0);
-    digitalWrite(latchPin, 1);  
+    digitalWrite(latchPin, 0);
+    shiftOut(ON); 
+    shiftOut(ON);
+    digitalWrite(latchPin, 1);
 }
 
 //********************* Shift Register Helpers ********************//

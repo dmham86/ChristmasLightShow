@@ -34,11 +34,11 @@ import processing.serial.*;
     * 
     **/
     
-    final int NUM_SEGMENTS = 13; // The number of light segments you are using. The maximum without modification would be 13
+    final int NUM_SEGMENTS = 12; // The number of light segments you are using. The maximum without modification would be 13
                                  // Three will be added for kick, hat, and snare
     final int NUM_FILTERS = 16; // The number of band pass filters used to analyze the signal
                                 // There will actually be four extras used to help analyze 
-    final float MIN_LEVEL = .18f; // The minimum sound level for which you want any lights to come on
+    final float MIN_LEVEL = .14f; // The minimum sound level for which you want any lights to come on
     final float FILE_TYPE = 1; // 0 = output as .csv (TRUE,FALSE,FALSE,TRUE,...) where each boolean represents a segment and each line represents a millisecond in the song
                                // non-zero = output as .txt (int,int,int,int...) where each integer represents 2 bytes 1001000100001001 and each bit represents a segment
 
