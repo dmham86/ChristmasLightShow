@@ -48,7 +48,6 @@ import processing.serial.*;
 
 
     Minim minim;
-    float[][] spectra;
     boolean [][] spectra2;
     FloatSampleBuffer    buffer;
     AudioPlayer song;
@@ -100,7 +99,6 @@ void startNextSong() {
   }
   String songName = getRandomFileName(audioPath, ".mp3");
   if(songName == null) { return; }
-  song = minim.loadFile(audioPath + "\\" + songName);
   if( FILE_TYPE == 0 ) {
     File f = new File(dataPath(songName+".csv"));
     if (!f.exists()) {
@@ -122,19 +120,22 @@ void startNextSong() {
     if (!f.exists()) {
       analyzeUsingAudioRecordingStream(audioPath, songName);
     }
-    String[] lines = loadStrings(dataPath(songName+".txt"));
-    // First line is the number of segments written
-    READ_SEGMENTS = Integer.parseInt(lines[0]);
-    spectra2 = new boolean[lines.length-1][READ_SEGMENTS]; 
-    for(int i = 0; i < lines.length-1; i++ ) {
-      Integer input = Integer.parseInt(lines[i+1]);
-      for( int j = 0; j < READ_SEGMENTS; j++) {
-        spectra2[i][j] = (input & 1<<j) > 0;
-        System.out.println((input & 1<<j));
+    else {
+      String[] lines = loadStrings(dataPath(songName+".txt"));
+      // First line is the number of segments written
+      READ_SEGMENTS = Integer.parseInt(lines[0]);
+      spectra2 = new boolean[lines.length-1][READ_SEGMENTS]; 
+      for(int i = 0; i < lines.length-1; i++ ) {
+        Integer input = Integer.parseInt(lines[i+1], 16);
+        for( int j = 0; j < READ_SEGMENTS; j++) {
+          spectra2[i][j] = (input & 1<<j) > 0;
+          System.out.println((input & 1<<j));
+        }
       }
     }
   }
-
+  
+  song = minim.loadFile(audioPath + "\\" + songName);
   //TODO: Wrap beat detect into pre-processing  
   beatDetect = new BeatDetect(song.bufferSize(), song.sampleRate());
   beatListener = new BeatListener(beatDetect);
@@ -165,6 +166,8 @@ String getRandomFileName(String path, final String extension) {
 
 void analyzeUsingAudioRecordingStream(String filePath, String fileName)
 {
+  
+  float[][] spectra;
   int fftSize = 1024;
   AudioRecordingStream stream = minim.loadFileStream(filePath + "\\" + fileName, fftSize, false);
   FilePlayer filePlayer = new FilePlayer(stream);
@@ -181,7 +184,7 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
   for( int filtIdx = 0; filtIdx < NUM_FILTERS + 4; filtIdx++ ){
       // create the buffer we use for reading from the stream
       MultiChannelBuffer buffer = new MultiChannelBuffer(fftSize, filePlayer.getStream().getFormat().getChannels());
-      BandPass bp = new BandPass(250+50*filtIdx, 50, filePlayer.getStream().getFormat().getSampleRate());
+      BandPass bp = new BandPass(250+spectraSpacing*filtIdx, spectraSpacing, filePlayer.getStream().getFormat().getSampleRate());
 
       filePlayer.patch(bp);
         // tell it to "play" so we can read from it.
@@ -195,6 +198,10 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
         println("  Analyzing...");
         // now analyze the left channel
         float filtered[] = buffer.getChannel(0);
+        float []channel1 = buffer.getChannel(1);
+        for(int i = 0; i < filtered.length; i++) {
+          filtered[i] = (filtered[i] + channel1[i])/2;
+        }
         bp.process(filtered);
 
         println("  Copying...");
@@ -279,10 +286,11 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
       }
       outputFile.close();
     }
-    else { // Integer representation
+    else { // Hex representation
       outputFile = createWriter(dataPath(fileName+".txt"));
+      String format = "%0" + ceil(NUM_FILTERS/4) + "X";
       outputFile.println(NUM_FILTERS);
-      int out;
+      int out = 0;
       for(int i = 0; i < spectra2.length; i++) {
         out = 0;
         for(int j = 0; j < NUM_FILTERS; j++) {
@@ -290,7 +298,7 @@ void analyzeUsingAudioRecordingStream(String filePath, String fileName)
             out = out | 1<<j; 
           }
         }
-        outputFile.println(out);
+        outputFile.println(String.format(format, 0xFFFFFF & out));
       }
       outputFile.close();
     }
